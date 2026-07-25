@@ -1,0 +1,5 @@
+# Shell installer must keep LF even when committed from Windows — a CRLF install.sh
+# fails on macOS/Linux with "command not found" on every line.
+*.sh text eol=lf
+*.md text
+*.ps1 text
