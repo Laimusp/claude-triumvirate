@@ -19,14 +19,27 @@
 
 - **Claude Code** (CLI или desktop).
 - **git** — для takt/mtakt.
-- **Для ТБ** — два внешних MCP:
-  - **Codex CLI** (бог №1, модель OpenAI): `npm install -g @openai/codex`, залогиниться (`codex login`, нужен план ChatGPT), подключить к Claude Code:
-    ```
-    claude mcp add codex -s user -- codex mcp-server
-    ```
-    Модель ТБ не задаёт — берётся сток из `~/.codex/config.toml`.
-  - **antigravity-mcp** (бог №2, Gemini через [Antigravity](https://github.com/Laimusp/antigravity-mcp)): установка по README репо, нужен Google-аккаунт. В конфиге MCP обязателен env `AGY_MODEL=gemini-pro-agent` — без него агент тихо стартует на слабом Flash вместо Pro.
-- **Опционально, «третий бог» (ЧК)** — резервный чистый Claude через `claude -p`, включается только словами «с чк» / «полный ТБ» / «чк-макс». По умолчанию зовёт модель `claude-opus-4-8` — если у тебя её нет, замени `--model` в `skills/tb/SKILL.md` на доступную.
+
+**Бог №1 — Codex CLI** (модель OpenAI). Ставится за минуту, работает на всех ОС:
+```
+npm install -g @openai/codex
+codex login                        # план ChatGPT; либо API-ключ: codex login --with-api-key
+claude mcp add codex -s user -- codex mcp-server
+```
+Модель ТБ не задаёт — берётся сток из `~/.codex/config.toml` (нет файла — дефолт самого Codex).
+
+**Бог №2 — [antigravity-mcp](https://github.com/Laimusp/antigravity-mcp)** (Gemini через Antigravity). Требует заметно больше:
+- **Windows** — OAuth-токен Antigravity лежит в Windows Credential Manager, оттуда его и читает сервер. На macOS/Linux бог №2 сейчас не заведётся.
+- **Python 3 + `requests`**, **Node 18+**.
+- **CLI `agy`**, установленный и хотя бы раз залогиненный ([antigravity.google](https://antigravity.google/)) — проверка: `cmdkey /list:gemini:antigravity`.
+- В конфиге MCP обязателен env **`AGY_MODEL=gemini-pro-agent`** — без него агент тихо стартует на слабом Flash вместо Pro.
+- Из страны, где Antigravity недоступен (напр. РФ), нужен свой unlock-прокси и `CLOUD_CODE_URL` на него; готового прокси репозиторий не даёт.
+
+**Имена MCP-серверов важны:** ключи должны быть ровно `codex` и `antigravity` — Claude Code собирает из них имена инструментов, а скиллы жёстко зовут `mcp__codex__codex` и `mcp__antigravity__ask-antigravity`. Назовёшь сервер иначе — скилл молча не найдёт бога.
+
+**ТБ не требует обоих богов.** Один не отвечает — ревью идёт с оставшимся и помечается как неполное. Так что Codex-only — рабочая конфигурация, просто без второго мнения.
+
+- **Опционально, «третий бог» (ЧК)** — резервный чистый Claude через `claude -p`, включается только словами «с чк» / «полный ТБ» / «чк-макс». По умолчанию зовёт модель `claude-opus-4-8`; если такой версии в твоём аккаунте нет — замени на алиас `opus` (он всегда резолвится) в `skills/tb/SKILL.md` **и** `skills/takt/SKILL.md`.
 
 ## Установка
 
@@ -34,16 +47,19 @@
    - Windows: `powershell -ExecutionPolicy Bypass -File install.ps1`
    - macOS/Linux: `sh install.sh`
 2. Добавь содержимое `CLAUDE.md.template` в конец своего `~/.claude/CLAUDE.md`. Это «ядро v2» — божественный промпт, который скиллы шлют богам как системку. Без него ТБ работает в ослабленном fallback-режиме.
-3. Подключи MCP-серверы (см. «Требования»).
+3. Подключи MCP-серверы (см. «Требования»), ключи — ровно `codex` / `antigravity`.
 4. Перезапусти Claude Code.
+5. По желанию: добавь `.tb-artifact.md` в глобальный gitignore — ТБ кладёт этот файл в корень репо на время ревью и удаляет после. Если цикл оборвётся, файл останется лежать.
 
-Проверка: скажи Claude «Вызови ТБ на последний коммит» в любом git-репо — оба бога должны ответить findings-ами (или «чисто»).
+Проверка: скажи Claude «Вызови ТБ на последний коммит» в любом git-репо — подключённые боги должны ответить findings-ами (или «чисто»). Отвечает только один — ТБ так и скажет: «ТБ неполный».
+
+Обновление: перезапуск установщика перезапишет скиллы, старые версии уедут в `~/.claude/skills-backup/<дата>/` (специально **не** в `~/.claude/skills/` — там любая папка считается скиллом, и бэкап стал бы вторым, устаревшим `tb`).
 
 ## ⚠️ Безопасность — прочитай перед использованием
 
 Скиллы по умолчанию запускают Codex с `approval-policy: "never"` и `sandbox: "danger-full-access"` — то есть внешний агент **не спрашивает подтверждений и имеет полный доступ к файлам и сети**. Antigravity-агент аналогично видит проект с правом записи. Для ревью боги обязаны работать read-only, но у Codex/Antigravity это держится **инструкцией в промпте, а не техническим барьером** (технический барьер есть только у ЧК — `--disallowedTools`).
 
-Это осознанный трейд-офф «скорость против паранойи». Хочешь строже — в `CLAUDE.md.template` и `skills/tb/SKILL.md` замени Codex-права на `sandbox: "read-only"` (для ревью этого достаточно) и `approval-policy: "on-request"`. Включай полный доступ только когда понимаешь, что делаешь.
+Это осознанный трейд-офф «скорость против паранойи». Хочешь строже — замени Codex-права на `sandbox: "read-only"` (для ревью этого достаточно) и `approval-policy: "on-request"` **во всех трёх местах**: `CLAUDE.md.template`, `skills/tb/SKILL.md`, `skills/takt/SKILL.md`. Для Antigravity аналог — передавать `workspace: "none"` (агент запирается во временную папку и репо не видит; артефакт он всё равно получает через `prompt_file`). Включай полный доступ только когда понимаешь, что делаешь.
 
 ## Как пользоваться
 
